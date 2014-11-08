@@ -5,23 +5,55 @@ HOST = ''
 PORT = 10015
 
 
+class ConnectedUser:
+    conn = None
+    addr = None
+
+    def __init__(self, conn, addr):
+        self.conn = conn
+        self.addr = addr
+
+
+connected_users = []
+
+
+def notify_all(msg, exclude=None):
+    for u in connected_users:
+        if u != exclude:
+            u.conn.send(msg.encode('utf-8'))
+
+
 def client_proc(conn, addr):
     try:
+        user = ConnectedUser(conn, addr)
+        global connected_users
+        connected_users.append(user)
         print('Accepted connection, client addr: ', addr)
 
         conn.send('What is your name ?'.encode('utf-8'))
         name = conn.recv(1024).decode('utf-8')
-        while True:
-            data = conn.recv(1024)
-            if not data:
-                break
-            msg = data.decode('utf-8')
-            if msg == '<quit>':
-                break
-            print("{} ({}): ".format(name, addr[0]), msg)
+        conn.send('Hi, {}!.'.format(name).encode('utf-8'))
+        conn.send('Type /exit or /quit to disconnect chat'.encode('utf-8'))
 
-        print("{} ({}) disconnected".format(name, addr[0]))
+        while True:
+            try:
+                data = conn.recv(1024)
+                if not data:
+                    break
+                msg = data.decode('utf-8')
+                if msg in ['/quit', '/exit']:
+                    break
+                formatted = "{} ({}): {}".format(name, addr[0], msg)
+                notify_all(formatted, user)
+                print(formatted)
+            except socket.error as e:
+                break
+
+        connected_users = list(filter(lambda x: x.conn != conn, connected_users))
         conn.close()
+        formatted = "{} ({}) disconnected".format(name, addr[0])
+        notify_all(formatted)
+        print(formatted)
     except KeyboardInterrupt:
         exit()
 
